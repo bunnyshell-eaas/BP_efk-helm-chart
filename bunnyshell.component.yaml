@@ -1,0 +1,44 @@
+-
+    kind: Helm
+    version: v1
+    name: my-app-release
+    runnerImage: 'dtzar/helm-kubectl:3.8.2'
+    deploy:
+        - |
+            ## Elastic
+            # cat << EOF > ./elasticsearch/values.yaml 
+            #     Please copy values from the template file in git
+            # EOF
+            ## Kibana
+            # cat << EOF > ./kibana/values.yaml 
+            #     Please copy values from the template file in git
+            # EOF
+            ## Fluentd
+            # cat << EOF > ./fluentd/values.yaml 
+            #     Please copy values from the template file in git
+            # EOF
+        - 'helm upgrade --install --namespace {{ env.k8s.namespace }} --dependency-update --post-renderer /bns/helpers/helm/add_labels/kustomize -f ./fluentd/values.yaml fluentd-{{ env.unique }} ./fluentd'
+        - 'helm upgrade --install --namespace {{ env.k8s.namespace }} --dependency-update --post-renderer /bns/helpers/helm/add_labels/kustomize -f ./elasticsearch/values.yaml elasticsearch-{{ env.unique }} ./elasticsearch'
+        - 'helm upgrade --install --namespace {{ env.k8s.namespace }} --dependency-update --post-renderer /bns/helpers/helm/add_labels/kustomize -f ./kibana/values.yaml kibana-{{ env.unique }} ./kibana'
+        - |
+            SVC_ELASTIC_IP=$(kubectl get services --namespace {{ env.k8s.namespace }} fluentd-{{ env.k8s.namespace }} --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            SVC_KIBANA_IP=$(kubectl get services --namespace {{ env.k8s.namespace }} elasticsearch-{{ env.k8s.namespace }} --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            # SERVICE_LB_IP=$(kubectl get services --namespace {{ env.k8s.namespace }} kibana-{{ env.k8s.namespace }} --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    destroy:
+        - 'helm uninstall kibana-{{ env.unique }} --namespace {{ env.k8s.namespace }}'
+        - 'helm uninstall elasticsearch-{{ env.unique }} --namespace {{ env.k8s.namespace }}'
+        - 'helm uninstall fluentd-{{ env.unique }} --namespace {{ env.k8s.namespace }}'
+    start:
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=1 elasticsearch-{{ env.unique }} ./elasticsearch'
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=1 kibana-{{ env.unique }} ./kibana'
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=1 fluentd-{{ env.unique }} ./fluentd'
+    stop:
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=0 elasticsearch-{{ env.unique }} ./elasticsearch'
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=0 kibana-{{ env.unique }} ./kibana'
+        - 'helm upgrade --namespace {{ env.k8s.namespace }} --post-renderer /bns/helpers/helm/add_labels/kustomize --reuse-values --set replicas=0 fluentd-{{ env.unique }} ./fluentd'
+    exportVariables:
+        - SVC_KIBANA_IP
+        - SVC_ELASTIC_IP
+    gitRepo: 'git://github.com/bunnyshell-eaas/BP_efk-helm-chart.git'
+    gitBranch: master
+    gitApplicationPath: /
